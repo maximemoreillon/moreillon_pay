@@ -39,6 +39,7 @@ app.get('/all_users', user_management.get_all_users)
 app.get('/user', user_management.get_user)
 app.post('/create_user', auth.admin_only, user_management.create_user)
 app.post('/update_admin_rights', auth.admin_only, user_management.update_admin_rights)
+app.post('/update_card_uuid', auth.admin_only, user_management.update_card_uuid)
 app.delete('/user', auth.admin_only, user_management.delete_user)
 
 // Authentication related routes

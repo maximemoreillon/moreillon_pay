@@ -48,7 +48,10 @@ exports.login = (req, res) => {
           if(err) return res.status(500).send(`Error while generating token for user ${user.username}: ${err}`)
 
           // Respond with JWT
-          res.send({jwt: jwt});
+          res.send({
+            user: user,
+            jwt: jwt
+          });
 
         })
       })

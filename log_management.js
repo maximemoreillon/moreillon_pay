@@ -44,7 +44,8 @@ exports.get_log = (req,res) => {
            foreignField: '_id',
            as: 'user'
          }
-       }
+       },
+       { $sort: {timestamp: -1}}
     ])
     .toArray((err, result) => {
 

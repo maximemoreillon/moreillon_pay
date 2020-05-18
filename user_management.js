@@ -87,6 +87,35 @@ exports.update_card_uuid = (req,res) => {
   // input sanitation
   if(!req.body.user_id) return res.status(400).send('missing user_id')
   if(!req.body.card_uuid) return res.status(400).send('missing card_uuid')
+
+  MongoClient.connect(db_config.url, db_config.options, (err, db) => {
+
+    if(err) {
+      console.log(`Error connecting to DB: ${err}`)
+      return res.status(500).send(`Error connecting to DB: ${err}`)
+    }
+
+    db.db(db_config.db)
+    .collection(db_config.user_collection)
+    .findOneAndUpdate(
+      { _id: ObjectID(req.body.user_id) },
+      { $set: {card_uuid: req.body.card_uuid} },
+      { returnOriginal: false },
+      (err, result) => {
+
+      // Error handling
+      if (err) {
+        console.log(`Error getting user: ${err}`)
+        return res.status(500).send(`Error getting user: ${err}`)
+      }
+
+      res.send(result.value)
+
+      require('./main.js').io.sockets.emit('user_updated', result.value)
+
+      db.close()
+    })
+  })
 }
 
 exports.update_display_name = (req,res) => {
@@ -97,8 +126,6 @@ exports.update_display_name = (req,res) => {
 
 exports.update_admin_rights = (req,res) => {
   // input sanitation
-
-  console.log(req.body)
   if(!req.body.user_id) return res.status(400).send('missing user_id')
   if(!('admin' in req.body)) return res.status(400).send('missing admin')
 
