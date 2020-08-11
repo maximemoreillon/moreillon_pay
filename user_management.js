@@ -110,7 +110,7 @@ exports.update_card_uuid = (req,res) => {
       }
 
       res.send(result.value)
-
+      
       require('./main.js').io.sockets.emit('user_updated', result.value)
 
       db.close()

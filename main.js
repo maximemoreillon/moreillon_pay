@@ -34,6 +34,8 @@ app.use(bodyParser.json());
 
 app.get('/', (req, res) => { res.send('MoreillonPay API') })
 
+// NOT RESTFUL
+
 // Users related routes
 app.get('/all_users', user_management.get_all_users)
 app.get('/user', user_management.get_user)
@@ -45,6 +47,7 @@ app.delete('/user', auth.admin_only, user_management.delete_user)
 // Authentication related routes
 app.post('/login', auth.login)
 app.post('/whoami', auth.whoami)
+app.get('/device_jwt', auth.admin_only, auth.device_jwt)
 
 // logs related routes
 app.get('/log', log_management.get_log)

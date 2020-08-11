@@ -99,7 +99,7 @@ exports.admin_only = (req, res, next) => {
 
 exports.transaction_auth = (req, res, next) => {
   // admin or specific device
-
+  
   // Check if authorization header set
   if(!req.headers.authorization) return res.status(403).send('Authorization header not set')
   // parse the headers to get the token
@@ -184,4 +184,17 @@ exports.get_user_from_jwt = (req, res) => {
   // Check if authorization header set
   if(!req.query.jwt) return res.status(403).send('JWT not present in query')
   decode_jwt_respond_with_user(req.query, res)
+}
+
+exports.device_jwt = (req, res) => {
+  // Generate JWT
+  jwt.sign({ device: true }, process.env.JWT_SECRET, (err, jwt) => {
+
+    // handle signing errors
+    if(err) return res.status(500).send(`Error while generating token: ${err}`)
+
+    // Respond with JWT
+    res.send(jwt)
+
+  })
 }

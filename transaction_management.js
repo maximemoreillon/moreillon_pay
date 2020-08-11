@@ -8,6 +8,7 @@ const ObjectID = MongoDB.ObjectID;
 exports.transaction = (req, res) => {
   // API to perform a transaction
 
+
   // Input sanitation
   if(!('transaction_amount' in req.body)) {
     console.log("[HTTP] Missing amount");
@@ -23,10 +24,16 @@ exports.transaction = (req, res) => {
   const transaction_amount = Number(req.body.transaction_amount)
 
   // Check if the query can be formed
-  var query = {};
-  if('card_uid' in req.body) query.card_uid = req.body.card_uid
-  else if('user_id' in req.body) query._id = ObjectID(req.body.user_id)
-  else return res.status(400).send({status: "Invalid body"})
+
+  let card_uuid = req.body.card_uid || req.body.card_uuid
+  let user_id = req.body.user_id
+
+  let query = {}
+
+  if(card_uuid) query = {card_uuid: card_uuid}
+  else if(user_id) query._id = ObjectID(req.body.user_id)
+  else return res.status(400).send({status: "Missing card UUID or user ID"})
+
 
   MongoClient.connect(db_config.url, db_config.options, (err, db) => {
 
@@ -56,8 +63,8 @@ exports.transaction = (req, res) => {
 
         // Check if collection has been modified or not (i.e. found a match)
         if(transaction_result.value === null){
-          console.log("[HTTP] Valid token but invalid transaction request");
-          return res.status(404).send({status : "Invalid"});
+          console.log("[HTTP] Invalid transaction request")
+          return res.status(404).send({status : "Invalid"})
         }
 
         // Composing log entry
