@@ -1,7 +1,7 @@
 const bcrypt = require('bcrypt')
 const MongoDB = require('mongodb')
 
-const db_config = require('./db_config.js')
+const db_config = require('../db_config.js')
 
 const MongoClient = MongoDB.MongoClient;
 const ObjectID = MongoDB.ObjectID;
@@ -45,7 +45,7 @@ exports.create_user = (req, res) => {
 
         res.send(result)
 
-        require('./main.js').io.sockets.emit('user_created',result.ops[0])
+        require('../main.js').io.sockets.emit('user_created',result.ops[0])
 
         db.close()
       })
@@ -76,7 +76,7 @@ exports.delete_user = (req,res) => {
 
       res.send('OK')
 
-      require('./main.js').io.sockets.emit('user_deleted', {_id: req.query.user_id})
+      require('../main.js').io.sockets.emit('user_deleted', {_id: req.query.user_id})
 
       db.close()
     })
@@ -111,7 +111,7 @@ exports.update_card_uuid = (req,res) => {
 
       res.send(result.value)
       
-      require('./main.js').io.sockets.emit('user_updated', result.value)
+      require('../main.js').io.sockets.emit('user_updated', result.value)
 
       db.close()
     })
@@ -152,7 +152,7 @@ exports.update_admin_rights = (req,res) => {
 
       res.send(result.value)
 
-      require('./main.js').io.sockets.emit('user_updated', result.value)
+      require('../main.js').io.sockets.emit('user_updated', result.value)
 
       db.close()
     })

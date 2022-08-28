@@ -1,9 +1,8 @@
 const MongoDB = require('mongodb')
 
-const db_config = require('./db_config.js')
+const db_config = require('../db_config.js')
 
-const MongoClient = MongoDB.MongoClient
-const ObjectID = MongoDB.ObjectID
+const {MongoClient} = MongoDB
 
 
 exports.get_log = (req,res) => {

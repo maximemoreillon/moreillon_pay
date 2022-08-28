@@ -3,16 +3,14 @@ const MongoDB = require('mongodb')
 const cors = require('cors')
 const http = require('http')
 const express = require('express')
-const path = require('path')
 const bodyParser = require('body-parser')
-const jwt = require('jsonwebtoken')
 const socketio = require('socket.io')
 
 // local packages
 const db_config = require('./db_config.js')
-const user_management = require('./user_management.js')
-const transaction_management = require('./transaction_management.js')
-const log_management = require('./log_management.js')
+const user_management = require('./controllers/users.js')
+const transaction_management = require('./controllers/transactions.js')
+const log_management = require('./controllers/logs.js')
 
 const auth = require('./auth.js')
 
@@ -26,8 +24,7 @@ const app = express()
 const http_server = http.Server(app)
 exports.io = socketio(http_server)
 
-const MongoClient = MongoDB.MongoClient;
-const ObjectID = MongoDB.ObjectID;
+const {MongoClient} = MongoDB;
 
 app.use(cors())
 app.use(bodyParser.json());

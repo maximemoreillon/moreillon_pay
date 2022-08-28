@@ -1,6 +1,6 @@
 const MongoDB = require('mongodb')
 
-const db_config = require('./db_config.js')
+const db_config = require('../db_config.js')
 
 const MongoClient = MongoDB.MongoClient;
 const ObjectID = MongoDB.ObjectID;
@@ -97,7 +97,7 @@ exports.transaction = (req, res) => {
           });
 
           // Update clients connected through websockets
-          require('./main.js').io.sockets.emit('user_updated', transaction_result.value)
+          require('../main.js').io.sockets.emit('user_updated', transaction_result.value)
 
         });
 
