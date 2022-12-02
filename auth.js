@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken')
 const bcrypt = require('bcrypt')
 const MongoDB = require('mongodb')
 const dotenv = require('dotenv')
+const createHttpError = require('http-errors')
 
 const db_config = require('./db_config.js')
 
@@ -11,7 +12,7 @@ const MongoClient = MongoDB.MongoClient;
 const ObjectID = MongoDB.ObjectID;
 
 
-exports.login = (req, res) => {
+exports.login = (req, res, next) => {
 
   // Input sanitation
   if(!req.body.username) return res.status(400).send('missing username')

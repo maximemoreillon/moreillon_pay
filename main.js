@@ -1,9 +1,8 @@
 // Importing packages
-const MongoDB = require('mongodb')
+const { MongoClient } = require('mongodb')
 const cors = require('cors')
 const http = require('http')
 const express = require('express')
-const bodyParser = require('body-parser')
 const socketio = require('socket.io')
 
 // local packages
@@ -22,17 +21,16 @@ process.env.TZ = 'Asia/Tokyo'
 
 const app = express()
 const http_server = http.Server(app)
-exports.io = socketio(http_server)
+const io = socketio(http_server)
+exports.io = io
 
-const {MongoClient} = MongoDB;
 
 app.use(cors())
-app.use(bodyParser.json());
+app.use(express.json());
 
 app.get('/', (req, res) => { res.send('MoreillonPay API') })
 
 // NOT RESTFUL
-
 // Users related routes
 app.get('/all_users', user_management.get_all_users)
 app.get('/user', user_management.get_user)
@@ -54,7 +52,7 @@ app.delete('/log', auth.admin_only, log_management.clear_log)
 
 
 // Transactions related routes
-app.post('/transaction', auth.transaction_auth, transaction_management.transaction)
+app.post('/transaction', auth.transaction_auth, transaction_management.registerTransaction)
 
 
 http_server.listen(port, () => {
@@ -64,7 +62,7 @@ http_server.listen(port, () => {
 
 
 
-exports.io.sockets.on('connection', (socket) => {
+io.sockets.on('connection', (socket) => {
   // Deals with Websocket connections
   console.log('[WS] User connected')
 
