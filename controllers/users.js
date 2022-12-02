@@ -1,6 +1,6 @@
 const bcrypt = require('bcrypt')
 const MongoDB = require('mongodb')
-
+const createHttpError = require('http-errors')
 const db_config = require('../db_config.js')
 
 const MongoClient = MongoDB.MongoClient;
@@ -10,9 +10,10 @@ const ObjectID = MongoDB.ObjectID;
 exports.create_user = (req, res) => {
 
   // input sanitation
-  if(!req.body.card_uuid) return res.status(400).send('missing card_uuid')
-  if(!req.body.username) return res.status(400).send('missing username')
-  if(!req.body.password) return res.status(400).send('missing password')
+  // TODO: use JOI
+  if (!req.body.card_uuid) throw createHttpError(400, 'missing card_uuid') 
+  if (!req.body.username) throw createHttpError(400, 'missing username')
+  if (!req.body.password) throw createHttpError(400, 'missing password')
 
   bcrypt.hash(req.body.password, 10, (err, hash) => {
     if(err) return res.status(500).send(`Error hashing password: ${err}`)

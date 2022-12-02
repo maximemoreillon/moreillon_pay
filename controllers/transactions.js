@@ -1,24 +1,17 @@
 const MongoDB = require('mongodb')
+const createHttpError = require('http-errors')
 
 const db_config = require('../db_config.js')
 
-const MongoClient = MongoDB.MongoClient;
-const ObjectID = MongoDB.ObjectID;
+const { MongoClient, ObjectID } = MongoDB;
 
-exports.transaction = (req, res) => {
+exports.registerTransaction = (req, res, next) => {
   // API to perform a transaction
 
 
   // Input sanitation
-  if(!('transaction_amount' in req.body)) {
-    console.log("[HTTP] Missing amount");
-    return res.status(400).send({status: "Missing amount"})
-  }
-
-  if(!('transaction_description' in req.body)) {
-    console.log("[HTTP] Missing description");
-    return res.status(400).send({status: "Missing description"})
-  }
+  if (!('transaction_amount' in req.body)) throw createHttpError(400,'Missing amount')
+  if (!('transaction_description' in req.body)) throw createHttpError(400, 'Missing description')
 
   // Important: Ensure transaction amount is a number
   const transaction_amount = Number(req.body.transaction_amount)
