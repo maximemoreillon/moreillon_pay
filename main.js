@@ -23,13 +23,15 @@ const app = express()
 const http_server = http.Server(app)
 const io = socketio(http_server)
 exports.io = io
-
+exports.getIo = () => io
 
 app.use(cors())
 app.use(express.json());
 
 app.get('/', (req, res) => { res.send('MoreillonPay API') })
 
+
+app.use('/users', require('./routes/users'))
 // NOT RESTFUL
 // Users related routes
 app.get('/all_users', user_management.get_all_users)

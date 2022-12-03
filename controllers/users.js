@@ -1,11 +1,8 @@
 const bcrypt = require('bcrypt')
-const MongoDB = require('mongodb')
 const createHttpError = require('http-errors')
-const db_config = require('../db_config.js')
-
-const MongoClient = MongoDB.MongoClient;
-const ObjectID = MongoDB.ObjectID;
-
+const { get_db } = require('../db.js')
+const { ObjectID } = require('mongodb')
+const db_config = require('../db_config')
 
 exports.create_user = (req, res) => {
 
@@ -18,198 +15,142 @@ exports.create_user = (req, res) => {
   bcrypt.hash(req.body.password, 10, (err, hash) => {
     if(err) return res.status(500).send(`Error hashing password: ${err}`)
 
-    MongoClient.connect(db_config.url, db_config.options, (err, db) => {
-      if(err) {
-        console.log(`Error connecting to DB: ${err}`)
-        return res.status(500).send(`Error connecting to DB: ${err}`)
-      }
+    const user_decord = {
+      username: req.body.username,
+      card_uuid : req.body.card_uuid,
 
-      var user_decord = {
-        username: req.body.username,
-        card_uuid : req.body.card_uuid,
+      password_hashed : hash,
 
-        password_hashed : hash,
+      display_name : req.body.username, // by default display name is username
+      balance : 0, // Start with empty account
+    }
 
-        display_name : req.body.username, // by default display name is username
-        balance : 0, // Start with empty account
-      }
+    const db = get_db()
 
-      db.db(db_config.db)
-      .collection(db_config.user_collection)
-      .insertOne(user_decord, (err, result) => {
+    db.collection(db_config.user_collection)
+    .insertOne(user_decord, (err, result) => {
 
-        // Error handling
-        if (err) {
-          console.log(`Error creating user: ${err}`)
-          return res.status(500).send(`DB error: ${err}`)
-        }
+      // Error handling
+      if (err) throw createHttpError(500, err) 
 
-        res.send(result)
+      res.send(result.ops[0])
 
-        require('../main.js').io.sockets.emit('user_created',result.ops[0])
+      require('../main.js').io.sockets.emit('user_created',result.ops[0])
 
-        db.close()
-      })
     })
   })
 }
 
-exports.delete_user = (req,res) => {
-  // input sanitation
-  if(!req.query.user_id) return res.status(400).send('missing user_id')
+exports.get_all_users = (req, res) => {
 
-  MongoClient.connect(db_config.url, db_config.options, (err, db) => {
+  const db = get_db()
 
-    if(err) {
-      console.log(`Error connecting to DB: ${err}`)
-      return res.status(500).send(`Error connecting to DB: ${err}`)
-    }
+  db.collection(db_config.user_collection)
+    .find({})
+    .toArray((err, result) => {
 
-    db.db(db_config.db)
-    .collection(db_config.user_collection)
-    .deleteOne({_id: ObjectID(req.query.user_id)}, (err, result) => {
+      if (err) throw createHttpError(500, err)
 
-      // Error handling
-      if (err) {
-        console.log(`Error getting user: ${err}`)
-        return res.status(500).send(`Error getting user: ${err}`)
-      }
-
-      res.send('OK')
-
-      require('../main.js').io.sockets.emit('user_deleted', {_id: req.query.user_id})
-
-      db.close()
+      res.send(result)
     })
+}
+
+exports.get_user = (req, res) => {
+
+  const user_id = req.params.user_id || req.query.user_id
+
+  if (!user_id) throw createHttpError(400, 'missing user_id')
+
+  const db = get_db()
+
+
+  db.collection(db_config.user_collection)
+    .findOne({ _id: ObjectID(user_id) }, (err, result) => {
+      if (err) throw createHttpError(500, err)
+      if (!result) throw createHttpError(404, `User ${user_id} not found`)
+      res.send(result)
+    })
+}
+
+exports.delete_user = (req,res) => {
+
+  const user_id = req.params.user_id || req.query.user_id
+
+  if (!user_id) throw createHttpError(400, 'missing user_id')
+
+  const db = get_db()
+
+
+  db.collection(db_config.user_collection)
+    .deleteOne({ _id: ObjectID(user_id)}, (err, result) => {
+
+    // Error handling
+    if (err) throw createHttpError(500, err) 
+
+    res.send('OK')
+
+    require('../main.js').io.sockets.emit('user_deleted', { _id: user_id })
+
   })
 }
 
 exports.update_card_uuid = (req,res) => {
   // input sanitation
-  if(!req.body.user_id) return res.status(400).send('missing user_id')
+  if (!req.body.user_id) throw createHttpError(400, 'missing user_id')
   if(!req.body.card_uuid) return res.status(400).send('missing card_uuid')
 
-  MongoClient.connect(db_config.url, db_config.options, (err, db) => {
 
-    if(err) {
-      console.log(`Error connecting to DB: ${err}`)
-      return res.status(500).send(`Error connecting to DB: ${err}`)
+
+  const db = get_db()
+
+  db.collection(db_config.user_collection)
+  .findOneAndUpdate(
+    { _id: ObjectID(req.body.user_id) },
+    { $set: {card_uuid: req.body.card_uuid} },
+    { returnOriginal: false },
+    (err, result) => {
+
+    // Error handling
+    if (err) {
+      console.log(`Error getting user: ${err}`)
+      return res.status(500).send(`Error getting user: ${err}`)
     }
 
-    db.db(db_config.db)
-    .collection(db_config.user_collection)
-    .findOneAndUpdate(
-      { _id: ObjectID(req.body.user_id) },
-      { $set: {card_uuid: req.body.card_uuid} },
-      { returnOriginal: false },
-      (err, result) => {
+    res.send(result.value)
+    
+    require('../main.js').io.sockets.emit('user_updated', result.value)
 
-      // Error handling
-      if (err) {
-        console.log(`Error getting user: ${err}`)
-        return res.status(500).send(`Error getting user: ${err}`)
-      }
-
-      res.send(result.value)
-      
-      require('../main.js').io.sockets.emit('user_updated', result.value)
-
-      db.close()
-    })
   })
 }
 
-exports.update_display_name = (req,res) => {
-  // input sanitation
-  if(!req.body.user_id) return res.status(400).send('missing user_id')
-  if(!req.body.display_name) return res.status(400).send('missing display_name')
-}
+
 
 exports.update_admin_rights = (req,res) => {
   // input sanitation
-  if(!req.body.user_id) return res.status(400).send('missing user_id')
+  if (!req.body.user_id) throw createHttpError(400, 'missing user_id')
   if(!('admin' in req.body)) return res.status(400).send('missing admin')
 
-  MongoClient.connect(db_config.url, db_config.options, (err, db) => {
+  const db = get_db()
 
-    if(err) {
-      console.log(`Error connecting to DB: ${err}`)
-      return res.status(500).send(`Error connecting to DB: ${err}`)
+  db.collection(db_config.user_collection)
+  .findOneAndUpdate(
+    {_id: ObjectID(req.body.user_id)},
+    {$set: {admin: req.body.admin}},
+    { returnOriginal: false },
+    (err, result) => {
+
+    // Error handling
+    if (err) {
+      console.log(`Error getting user: ${err}`)
+      return res.status(500).send(`Error getting user: ${err}`)
     }
 
-    db.db(db_config.db)
-    .collection(db_config.user_collection)
-    .findOneAndUpdate(
-      {_id: ObjectID(req.body.user_id)},
-      {$set: {admin: req.body.admin}},
-      { returnOriginal: false },
-      (err, result) => {
+    res.send(result.value)
 
-      // Error handling
-      if (err) {
-        console.log(`Error getting user: ${err}`)
-        return res.status(500).send(`Error getting user: ${err}`)
-      }
+    require('../main.js').io.sockets.emit('user_updated', result.value)
 
-      res.send(result.value)
-
-      require('../main.js').io.sockets.emit('user_updated', result.value)
-
-      db.close()
-    })
   })
 
 }
 
-exports.get_all_users = (req,res) => {
 
-  MongoClient.connect(db_config.url, db_config.options, (err, db) => {
-
-    if(err) {
-      console.log(`Error connecting to DB: ${err}`)
-      return res.status(500).send(`Error connecting to DB: ${err}`)
-    }
-
-    db.db(db_config.db)
-    .collection(db_config.user_collection)
-    .find({})
-    .toArray((err, result) => {
-
-      // Error handling
-      if (err) {
-        console.log(`Error getting users: ${err}`)
-        return res.status(500).send(`Error getting users: ${err}`)
-      }
-
-      res.send(result)
-      db.close()
-    })
-  })
-}
-
-exports.get_user = (req,res) => {
-  // input sanitation
-  if(!req.query.user_id) return res.status(400).send('missing user_id')
-
-  MongoClient.connect(db_config.url, db_config.options, (err, db) => {
-
-    if(err) {
-      console.log(`Error connecting to DB: ${err}`)
-      return res.status(500).send(`Error connecting to DB: ${err}`)
-    }
-
-    db.db(db_config.db)
-    .collection(db_config.user_collection)
-    .findOne({_id: ObjectID(req.query.user_id)}, (err, result) => {
-
-      // Error handling
-      if (err) {
-        console.log(`Error getting user: ${err}`)
-        return res.status(500).send(`Error getting user: ${err}`)
-      }
-
-      res.send(result)
-      db.close()
-    })
-  })
-}
