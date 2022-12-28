@@ -1,156 +1,119 @@
-const bcrypt = require('bcrypt')
 const createHttpError = require('http-errors')
-const { get_db } = require('../db.js')
-const { ObjectID } = require('mongodb')
-const db_config = require('../db_config')
+const { hash_password } = require('../auth.js')
+const dotenv = require('dotenv')
+const User = require('../models/user')
+dotenv.config()
 
-exports.create_user = (req, res) => {
+const {
+  ADMIN_PASSWORD = 'keyboardcat',
+} = process.env
 
-  // input sanitation
-  // TODO: use JOI
-  if (!req.body.card_uuid) throw createHttpError(400, 'missing card_uuid') 
-  if (!req.body.username) throw createHttpError(400, 'missing username')
-  if (!req.body.password) throw createHttpError(400, 'missing password')
+exports.create_user = async (req, res, next) => {
 
-  bcrypt.hash(req.body.password, 10, (err, hash) => {
-    if(err) return res.status(500).send(`Error hashing password: ${err}`)
+  const {
+    card_uuid,
+    username,
+    password,
+  } = req.body
 
-    const user_decord = {
-      username: req.body.username,
-      card_uuid : req.body.card_uuid,
+  try {
 
-      password_hashed : hash,
+    if (!card_uuid) throw createHttpError(400, 'missing card_uuid') 
+    if (!username) throw createHttpError(400, 'missing username')
+    if (!password) throw createHttpError(400, 'missing password')
 
-      display_name : req.body.username, // by default display name is username
-      balance : 0, // Start with empty account
-    }
+    const password_hashed = await hash_password(password)
 
-    const db = get_db()
-
-    db.collection(db_config.user_collection)
-    .insertOne(user_decord, (err, result) => {
-
-      // Error handling
-      if (err) throw createHttpError(500, err) 
-
-      res.send(result.ops[0])
-
-      require('../main.js').io.sockets.emit('user_created',result.ops[0])
-
+    const newUser = await User.create({
+      username,
+      password_hashed,
+      card_uuid,
+      display_name: username,
     })
-  })
+
+    console.log(`[Mongoose] User ${newUser._id} created`)
+    require('../index.js').io.sockets.emit('user_created', newUser)
+
+    res.send(newUser)
+
+
+  } catch (error) {
+    next(error)
+  }
+
 }
 
-exports.get_all_users = (req, res) => {
+exports.read_users = async (req, res, next) => {
 
-  const db = get_db()
+  try {
+    const users = await User.find({})
+    res.send(users)
+  } catch (error) {
+    next(error)
+  }
 
-  db.collection(db_config.user_collection)
-    .find({})
-    .toArray((err, result) => {
-
-      if (err) throw createHttpError(500, err)
-
-      res.send(result)
-    })
 }
 
-exports.get_user = (req, res) => {
+exports.read_user = async (req, res, next) => {
 
-  const user_id = req.params.user_id || req.query.user_id
+  const { user: currentUser } = res.locals
+  let { user_id } = req.params
+  
+  try {
+    if (user_id === 'self' && currentUser) user_id = currentUser._id
+    else throw createHttpError(400, 'Using self but not logged in')
+    const user = await User.findById(user_id)
+    if(!user) throw createHttpError(404, `User ${user_id} not found`)
+    res.send(user)
+  } catch (error) {
+    next(error)
+  }
 
-  if (!user_id) throw createHttpError(400, 'missing user_id')
-
-  const db = get_db()
-
-
-  db.collection(db_config.user_collection)
-    .findOne({ _id: ObjectID(user_id) }, (err, result) => {
-      if (err) throw createHttpError(500, err)
-      if (!result) throw createHttpError(404, `User ${user_id} not found`)
-      res.send(result)
-    })
 }
 
-exports.delete_user = (req,res) => {
+exports.update = async (req, res, next) => {
+  // TODO: update user
+  // TODO: admin rights update
 
-  const user_id = req.params.user_id || req.query.user_id
+  const { user_id } = req.params
+  try {
+    throw createHttpError(501,'Not implemented')
+  } catch (error) {
+    next(error)
+  }
 
-  if (!user_id) throw createHttpError(400, 'missing user_id')
-
-  const db = get_db()
-
-
-  db.collection(db_config.user_collection)
-    .deleteOne({ _id: ObjectID(user_id)}, (err, result) => {
-
-    // Error handling
-    if (err) throw createHttpError(500, err) 
-
-    res.send('OK')
-
-    require('../main.js').io.sockets.emit('user_deleted', { _id: user_id })
-
-  })
 }
 
-exports.update_card_uuid = (req,res) => {
-  // input sanitation
-  if (!req.body.user_id) throw createHttpError(400, 'missing user_id')
-  if(!req.body.card_uuid) return res.status(400).send('missing card_uuid')
+exports.delete_user = async (req, res, next) => {
+
+  const { user_id } = req.params
+  try {
+    const user = await User.findByIdAndDelete(user_id)
+    if(!user) throw createHttpError(404, `User ${user_id} not found`)
+    res.send(user)
+    require('../index.js').io.sockets.emit('user_deleted', {_id: user._id})
+  } catch (error) {
+    next(error)
+  }
+
+}
 
 
 
-  const db = get_db()
-
-  db.collection(db_config.user_collection)
-  .findOneAndUpdate(
-    { _id: ObjectID(req.body.user_id) },
-    { $set: {card_uuid: req.body.card_uuid} },
-    { returnOriginal: false },
-    (err, result) => {
-
-    // Error handling
-    if (err) {
-      console.log(`Error getting user: ${err}`)
-      return res.status(500).send(`Error getting user: ${err}`)
+exports.create_admin_account = async () => {
+  try {
+    const password_hashed = await hash_password(ADMIN_PASSWORD)
+    const userProperties = {
+      username: 'admin',
+      display_name: 'Administrator',
+      password_hashed,
+      isAdmin: true,
     }
-
-    res.send(result.value)
-    
-    require('../main.js').io.sockets.emit('user_updated', result.value)
-
-  })
+    await User.create(userProperties)
+    console.log(`Administrator account created`)
+  } catch (error) {
+    if(error.code === 11000) return console.log('Administrator account already existed')
+    else throw error
+  }
+  
 }
-
-
-
-exports.update_admin_rights = (req,res) => {
-  // input sanitation
-  if (!req.body.user_id) throw createHttpError(400, 'missing user_id')
-  if(!('admin' in req.body)) return res.status(400).send('missing admin')
-
-  const db = get_db()
-
-  db.collection(db_config.user_collection)
-  .findOneAndUpdate(
-    {_id: ObjectID(req.body.user_id)},
-    {$set: {admin: req.body.admin}},
-    { returnOriginal: false },
-    (err, result) => {
-
-    // Error handling
-    if (err) {
-      console.log(`Error getting user: ${err}`)
-      return res.status(500).send(`Error getting user: ${err}`)
-    }
-
-    res.send(result.value)
-
-    require('../main.js').io.sockets.emit('user_updated', result.value)
-
-  })
-
-}
-
-

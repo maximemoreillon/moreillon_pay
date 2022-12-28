@@ -1,19 +1,28 @@
 const { Router } = require('express')
 const {
     create_user,
-    get_all_users,
-    get_user,
+    read_users,
+    read_user,
     delete_user
 } = require('../controllers/users')
+const { 
+    admin_only_middleware,
+    middleware_lax,
+    middleware,
+} = require('../auth')
+
 
 const router = Router()
 
 router.route('/')
-    .post(create_user)
-    .get(get_all_users)
+    .post(admin_only_middleware, create_user)
+    // TODO: Consider whether normal user can see all users
+    .get(middleware_lax,read_users)
 
 router.route('/:user_id')
-    .get(get_user)
-    .delete(delete_user)
+    // TODO: Consider whether normal user can see all users
+    .get(middleware_lax,read_user)
+    .delete(admin_only_middleware, delete_user)
+    // TODO: Update
 
 module.exports = router

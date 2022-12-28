@@ -1,201 +1,186 @@
-const jwt = require('jsonwebtoken')
-const bcrypt = require('bcrypt')
-const MongoDB = require('mongodb')
-const dotenv = require('dotenv')
+const User = require('./models/user.js')
 const createHttpError = require('http-errors')
-
-const db_config = require('./db_config.js')
+const bcrypt = require('bcrypt')
+const jwt = require('jsonwebtoken')
+const dotenv = require('dotenv')
 
 dotenv.config()
 
-const MongoClient = MongoDB.MongoClient;
-const ObjectID = MongoDB.ObjectID;
+const {
+  JWT_SECRET = 'keyboardcat'
+} = process.env
 
+// aliases for bcrypt functions
+const hash_password = (password_plain) => bcrypt.hash(password_plain, 10)
+const check_password = (password_plain, password_hashed) => bcrypt.compare(password_plain, password_hashed)
 
-exports.login = (req, res, next) => {
+const retrieve_jwt = (req, res) => {
 
-  // Input sanitation
-  if(!req.body.username) return res.status(400).send('missing username')
-  if(!req.body.password) return res.status(400).send('missing password')
+  return req.headers.authorization?.split(" ")[1]
+    || req.query.jwt
+    || req.query.token
+}
 
-  MongoClient.connect(db_config.url, db_config.options, (err, db) => {
-
-    if(err) {
-      console.log(`Error connecting to DB: ${err}`)
-      return res.status(500).send(`Error connecting to DB: ${err}`)
-    }
-
-    db.db(db_config.db)
-    .collection(db_config.user_collection)
-    .findOne({username: req.body.username}, (err, user) => {
-
-      // error handling
-      if(err) return res.status(500).send(`Error querying the DB: ${err}`)
-
-      // close the database
-      db.close()
-
-      bcrypt.compare(req.body.password, user.password_hashed, (err, result) => {
-        // Handle hashing errors
-        if(err) return res.status(500).send(`Error while verifying password for user ${user.username}: ${err}`)
-
-        // Check validity of result
-        if(!result) return res.status(403).send(`Incorrect password for user ${user.username}`)
-
-        // Generate JWT
-        jwt.sign({ user_id: user._id }, process.env.JWT_SECRET, (err, jwt) => {
-
-          // handle signing errors
-          if(err) return res.status(500).send(`Error while generating token for user ${user.username}: ${err}`)
-
-          // Respond with JWT
-          res.send({
-            user: user,
-            jwt: jwt
-          });
-
-        })
-      })
-    })
+const generate_token = (user) => new Promise( (resolve, reject) => {
+  const token_content = { user_id: user._id }
+  jwt.sign(token_content, JWT_SECRET, (error, token) => {
+    if (error) return reject(createHttpError(500,error))
+    resolve(token)
+    console.log(`[Auth] Token generated for user ${user._id}`)
   })
-}
+})
 
 
-exports.admin_only = (req, res, next) => {
-  // Check if authorization header set
-  if(!req.headers.authorization) return res.status(403).send('Authorization header not set')
-  // parse the headers to get the token
-  let token = req.headers.authorization.split(" ")[1];
-  if(!token) return res.status(403).send('Token not found in authorization header')
-
-  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-    if(err) return res.status(403).send('Invalid JWT')
-
-    MongoClient.connect(db_config.url, db_config.options, (err, db) => {
-
-      if(err) {
-        console.log(`Error connecting to DB: ${err}`)
-        return res.status(500).send(`Error connecting to DB: ${err}`)
-      }
-
-      db.db(db_config.db)
-      .collection(db_config.user_collection)
-      .findOne({_id: ObjectID(decoded.user_id)}, (err, result) => {
-
-        // Error handling
-        if (err) {
-          console.log(`Error getting user: ${err}`)
-          return res.status(500).send(`Error getting user: ${err}`)
-        }
-
-        db.close()
-
-        if(result.admin) next()
-        else res.status(403).send('User must be an administrator')
-
-      })
-    })
+const decode_token = (token) => new Promise( (resolve, reject) => {
+  const {JWT_SECRET} = process.env
+  if (!JWT_SECRET) return reject(createHttpError(500, `Token secret not set`))
+  jwt.verify(token, JWT_SECRET, (error, decoded_token) => {
+    if (error) return reject(createHttpError(403, `Invalid JWT`))
+    resolve(decoded_token)
   })
-}
+})
 
-exports.transaction_auth = (req, res, next) => {
-  // admin or specific device
-  
-  // Check if authorization header set
-  if(!req.headers.authorization) return res.status(403).send('Authorization header not set')
-  // parse the headers to get the token
-  let token = req.headers.authorization.split(" ")[1];
-  if(!token) return res.status(403).send('Token not found in authorization header')
+exports.login = async (req, res, next) => {
 
-  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-    if(err) return res.status(403).send('Invalid JWT')
+  try {
+    // Todo: Register last login time
+    const username = req.body.username || req.body.identifier
+    const {password} = req.body
 
-    // if transaction operated by a device, simply allow
-    if(decoded.device) return next()
+    // Todo: use JOY
+    if (!username) throw createHttpError(400, `Missing username`)
+    if (!password) throw createHttpError(400, `Missing password`)
 
-    MongoClient.connect(db_config.url, db_config.options, (err, db) => {
+    // currently, can only login using username
+    const query = { username }
 
-      if(err) {
-        console.log(`Error connecting to DB: ${err}`)
-        return res.status(500).send(`Error connecting to DB: ${err}`)
-      }
+    const user = await User.findOne(query)
+      .select('+password_hashed')
 
-      db.db(db_config.db)
-      .collection(db_config.user_collection)
-      .findOne({_id: ObjectID(decoded.user_id)}, (err, result) => {
+    if (!user) throw createHttpError(403, `User ${username} does not exist`) 
 
-        // Error handling
-        if (err) {
-          console.log(`Error getting user: ${err}`)
-          return res.status(500).send(`Error getting user: ${err}`)
-        }
+    const password_correct = await check_password(password, user.password_hashed)
+    if (!password_correct) throw createHttpError(403, `Incorrect password`)
 
-        db.close()
+    const jwt = await generate_token(user)
 
-        if(result.admin) next()
-        else res.status(403).send('User must be an administrator')
+    res.send({jwt, user})
 
-      })
-    })
-  })
-}
+    console.log(`[Auth] Successful login for user ${user._id}`)
 
-
-function decode_jwt_respond_with_user(token, res){
-  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-    if(err) return res.status(403).send('Invalid JWT')
-
-    MongoClient.connect(db_config.url, db_config.options, (err, db) => {
-
-      if(err) {
-        console.log(`Error connecting to DB: ${err}`)
-        return res.status(500).send(`Error connecting to DB: ${err}`)
-      }
-
-      db.db(db_config.db)
-      .collection(db_config.user_collection)
-      .findOne({_id: ObjectID(decoded.user_id)}, (err, result) => {
-
-        // Error handling
-        if (err) {
-          console.log(`Error getting user: ${err}`)
-          return res.status(500).send(`Error getting user: ${err}`)
-        }
-
-        res.send(result)
-        db.close()
-      })
-    })
-  })
-}
-
-exports.whoami = (req, res) => {
-  // Check if authorization header set
-  if(!req.headers.authorization) return res.status(403).send('Authorization header not set')
-  // parse the headers to get the token
-  let token = req.headers.authorization.split(" ")[1];
-  if(!token) return res.status(403).send('Token not found in authorization header')
-
-  decode_jwt_respond_with_user(token, res)
-
+  }
+  catch (error) {
+    next(error)
+  }
 
 }
 
-exports.get_user_from_jwt = (req, res) => {
-  // Check if authorization header set
-  if(!req.query.jwt) return res.status(403).send('JWT not present in query')
-  decode_jwt_respond_with_user(req.query, res)
+
+
+exports.middleware = async (req, res, next) => {
+
+  try {
+    const token = retrieve_jwt(req, res)
+    if(!token) throw `Missing JWT`
+    const {user_id} = await decode_token(token)
+
+    const user = await User.findOne({ _id: user_id })
+      .select('+password_hashed')
+
+    res.locals.user = user
+
+    next()
+
+  } 
+  catch (error) {
+    next(error)
+  }
 }
 
-exports.device_jwt = (req, res) => {
-  // Generate JWT
-  jwt.sign({ device: true }, process.env.JWT_SECRET, (err, jwt) => {
+exports.middleware_lax = async (req, res, next) => {
 
-    // handle signing errors
-    if(err) return res.status(500).send(`Error while generating token: ${err}`)
 
-    // Respond with JWT
+  try {
+    const token = retrieve_jwt(req, res)
+    if(!token) throw `Missing JWT`
+    const {user_id} = await decode_token(token)
+
+    const user = await User.findOne({ _id: user_id })
+      .select('+password_hashed')
+
+    res.locals.user = user
+
+  } 
+  catch (error) {
+    // Nothing
+
+  }
+  finally {
+    next()
+  }
+
+}
+
+exports.admin_only_middleware = async (req, res, next) => {
+
+  try {
+    const token = retrieve_jwt(req, res)
+    if(!token) throw `Missing JWT`
+    const {user_id} = await decode_token(token)
+
+    const user = await User.findOne({ _id: user_id })
+      .select('+password_hashed')
+
+    if(!user.isAdmin) throw 'User is not administrator'
+
+    res.locals.user = user
+
+    next()
+
+  } 
+  catch (error) {
+    next(error)
+  }
+}
+
+exports.admin_or_device_middleware = async (req, res, next) => {
+
+  try {
+    const token = retrieve_jwt(req, res)
+    if(!token) throw `Missing JWT`
+    const {user_id} = await decode_token(token)
+
+    // Allow devices to proceed
+    if(user_id === 'device') return next()
+
+    const user = await User.findOne({ _id: user_id })
+      .select('+password_hashed')
+
+    if(!user.isAdmin) throw 'User is not administrator'
+
+    res.locals.user = user
+
+    next()
+
+  } 
+  catch (error) {
+    next(error)
+  }
+}
+
+exports.get_device_jwt = async (req, res, next) => {
+  // Generate JWT for readers
+  try {
+    const jwt = await generate_token({_id: 'device'})
     res.send(jwt)
-
-  })
+  } catch (error) {
+    next(error)
+  }
+  
 }
+
+
+exports.decode_token = decode_token
+exports.generate_token = generate_token
+exports.check_password = check_password
+exports.hash_password = hash_password

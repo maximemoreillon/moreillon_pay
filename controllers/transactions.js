@@ -1,92 +1,73 @@
-const MongoDB = require('mongodb')
+const Transaction = require('../models/transaction')
+const User = require('../models/user')
+
 const createHttpError = require('http-errors')
-const { get_db } = require('../db.js')
 
-const db_config = require('../db_config.js')
+exports.create_transaction = async (req, res, next) => {
 
-const { ObjectID } = MongoDB;
+  const { user: currentUser } = res.locals
 
-exports.registerTransaction = (req, res, next) => {
-  // API to perform a transaction
+  const {
+    card_uuid,
+    user_id,
+    amount,
+    description
+  } = req.body
 
+  try {
+    // TODO: consider case where top up from admin
 
-  // Input sanitation
-  if (!('transaction_amount' in req.body)) throw createHttpError(400,'Missing amount')
-  if (!('transaction_description' in req.body)) throw createHttpError(400, 'Missing description')
+    const query = (currentUser && currentUser.isAdmin) 
+      ? {$or: [{card_uuid},{_id: user_id}]} 
+      : {card_uuid}
 
-  // Important: Ensure transaction amount is a number
-  const transaction_amount = Number(req.body.transaction_amount)
+    const user = await User.findOne(query)
 
-  // Check if the query can be formed
+    if(!user) throw createHttpError(404, `User with card ${card_uuid} not found`)
+    if(user.balance < Number(amount)) throw createHttpError(400, `Insufficient balance`)
 
-  let card_uuid = req.body.card_uid || req.body.card_uuid
-  let user_id = req.body.user_id
+    user.balance += Number(amount)
 
-  let query = {}
+    await user.save()
 
-  if(card_uuid) query = {card_uuid: card_uuid}
-  else if(user_id) query._id = ObjectID(req.body.user_id)
-  else throw createHttpError(400, 'Missing card UUID or user ID') 
-
-
-
-  var dbo = get_db()
-
-  // If transaction is negative (payment and not top up), make sure the account has at least
-  if(transaction_amount < 0) query.balance = {$gte: -transaction_amount}
-
-  dbo.collection(db_config.user_collection)
-  .findOneAndUpdate(
-    query, // Query
-    { $inc: {balance: transaction_amount} }, // Action
-    { returnOriginal: false }, // Options
-    (err, transaction_result) => {
-
-      // handle DB errors
-      if (err) {
-        console.log(`Error operating transaction in DB: ${err}`)
-        return res.status(500).send({status: "DB error"})
-      }
-
-      // Check if collection has been modified or not (i.e. found a match)
-      if(transaction_result.value === null){
-        console.log("[HTTP] Invalid transaction request")
-        return res.status(404).send({status : "Invalid"})
-      }
-
-      // Composing log entry
-      const log_entry = {
-        timestamp : new Date(),
-        user_id : transaction_result.value._id,
-        new_balance : transaction_result.value.balance,
-        transaction_amount : transaction_amount,
-        transaction_description : req.body.transaction_description,
-      };
-
-
-      // Log everything in the transaction log
-      dbo.collection(db_config.log_collection)
-      .insertOne(log_entry, (err, result) => {
-        if (err) {
-          console.log(`Error Logging transaaction: ${err}`)
-          return res.status(500).send({status: "DB error"})
-        }
-
-        console.log("[HTTP] Valid transaction");
-
-        res.send({
-          status: 'OK',
-          employee_number: transaction_result.value.employee_number,
-          balance:  transaction_result.value.balance,
-          transaction_amount: transaction_amount,
-        });
-
-        // Update clients connected through websockets
-        require('../main.js').io.sockets.emit('user_updated', transaction_result.value)
-
-      });
-
+    const newTransactionProperties = {
+      user_id: user._id,
+      amount,
+      description,
     }
-  );
 
+    const newTransaction = await Transaction.create(newTransactionProperties)
+    console.log(`Transaction ${newTransaction._id} registered`)
+    
+    // TODO: Improve require
+    require('../index.js').io.sockets.emit('user_updated', user)
+
+    res.send(newTransaction)
+
+
+  } catch (error) {
+    next(error)
+  }
+
+}
+
+
+exports.read_transactions = async (req, res, next) => {
+  try {
+
+    // TODO: apply filters
+    const {
+      from,
+      to,
+      ...query
+    } = req.query
+
+    const transactions = await Transaction.find({})
+
+    console.log(`Transactions queried`)
+    res.send(transactions)
+
+  } catch (error) {
+    next(error)
+  }
 }
