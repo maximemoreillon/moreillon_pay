@@ -4,9 +4,6 @@ const {
     get_device_jwt,
 } = require('../auth')
 
-
-
-
 const router = Router()
 
 router.route('/login')
