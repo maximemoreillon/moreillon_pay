@@ -71,13 +71,32 @@ exports.read_user = async (req, res, next) => {
 
 }
 
-exports.update = async (req, res, next) => {
-  // TODO: update user
-  // TODO: admin rights update
-
+exports.update_user = async (req, res, next) => {
   const { user_id } = req.params
+  const properties = req.body
+  const options = {new: true}
   try {
-    throw createHttpError(501,'Not implemented')
+    const user = await User.findByIdAndUpdate(user_id, properties, options)
+    if(!user) throw createHttpError(404, `User ${user_id} not found`)
+    res.send(user)
+  } catch (error) {
+    next(error)
+  }
+
+}
+
+exports.update_user_password = async (req, res, next) => {
+  // TODO: check current password
+  const { user_id } = req.params
+  const { newPassword, currentPassword } = req.body
+  const { user: currentUser } = res.locals
+  const options = {new: true}
+  try {
+    if(!currentUser.isAdmin && currentUser._id !== user_id) throw createHttpError(403, `Not allowed to modify another user's password`)
+    const password_hashed = await hash_password(newPassword)
+    const user = await User.findByIdAndUpdate(user_id, {password_hashed}, options)
+    if(!user) throw createHttpError(404, `User ${user_id} not found`)
+    res.send(user)
   } catch (error) {
     next(error)
   }
