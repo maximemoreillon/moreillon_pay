@@ -12,3 +12,5 @@ Refactoring efforts invovled:
 I did not have time to fully test this refactored version so please excuse any bug.
 
 Please find the source code for the GUI of this project [here](https://github.com/maximemoreillon/moreillon_pay_front) and the IoT reader firmware [here](https://github.com/maximemoreillon/moreillon_pay_reader).
+
+For more information about this project, please see this [article](https://articles.maximemoreillon.com/articles/133).
