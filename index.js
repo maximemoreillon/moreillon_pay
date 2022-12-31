@@ -41,7 +41,6 @@ http_server.listen(port, () => {
 io.sockets.on("connection", async (socket) => {
   console.log("[WS] User connected")
 
-  // TODO: user_list emit
   const users = await User.find({})
   socket.emit("user_list", users)
 
