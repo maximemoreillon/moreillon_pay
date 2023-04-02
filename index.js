@@ -1,7 +1,7 @@
+require("express-async-errors")
 const cors = require("cors")
 const http = require("http")
 const express = require("express")
-require("express-async-errors")
 const socketio = require("socket.io")
 const db = require("./db")
 const User = require("./models/user")
